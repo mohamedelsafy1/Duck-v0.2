@@ -70623,7 +70623,7 @@ var config = {
   port: Number(process.env.PORT) || 3e3,
   databaseUrl: process.env.DATABASE_URL || "",
   geminiApiKey: process.env.GEMINI_API_KEY || "",
-  geminiModel: process.env.GEMINI_MODEL || "gemini-3.8-flash",
+  geminiModel: process.env.GEMINI_MODEL || "gemini-3.8-flash,gemini-3-flash,gemini-2.5-flash-lite",
   // 'gemini' (default) or 'stub' (local UI testing only, refused in production)
   aiProvider: process.env.AI_PROVIDER || "gemini",
   publicUrl: process.env.PUBLIC_URL || "",
@@ -75269,30 +75269,37 @@ var geminiProvider = {
     const ai = new GoogleGenAI2({ apiKey: config.geminiApiKey });
     const parts = [{ text: req.user }];
     if (req.audio) parts.push({ inlineData: { mimeType: req.audio.mimeType, data: req.audio.dataBase64 } });
+    const models = config.geminiModel.split(",").map((m2) => m2.trim()).filter(Boolean);
     let lastErr;
     let useThinking = (process.env.GEMINI_THINKING_LEVEL ?? "low") !== "off";
-    for (let attempt = 0; attempt < 3; attempt++) {
-      try {
-        const res = await limiter.run(() => ai.models.generateContent({
-          model: config.geminiModel,
-          contents: [{ role: "user", parts }],
-          config: { systemInstruction: req.system, responseMimeType: "application/json", temperature: 0.8, httpOptions: { timeout: Number(process.env.AI_TIMEOUT_MS) || 1e5 }, ...useThinking ? { thinkingConfig: { thinkingLevel: process.env.GEMINI_THINKING_LEVEL ?? "low" } } : {} }
-        }));
-        const text = res.text ?? "";
-        if (!text.trim()) throw new AiError("\u0631\u062C\u0639 \u0627\u0644\u0645\u0648\u062F\u064A\u0644 \u0628\u0631\u062F \u0641\u0627\u0636\u064A.", "provider");
-        return { text, model: config.geminiModel };
-      } catch (e2) {
-        lastErr = e2;
-        const msg2 = String(e2?.message || e2);
-        const status = e2?.status ?? e2?.code;
-        if (useThinking && /thinking/i.test(msg2)) {
-          useThinking = false;
-          attempt--;
-          continue;
+    outer: for (const model of models) {
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          const res = await limiter.run(() => ai.models.generateContent({
+            model,
+            contents: [{ role: "user", parts }],
+            config: { systemInstruction: req.system, responseMimeType: "application/json", temperature: 0.8, httpOptions: { timeout: Number(process.env.AI_TIMEOUT_MS) || 85e3 }, ...useThinking ? { thinkingConfig: { thinkingLevel: process.env.GEMINI_THINKING_LEVEL ?? "low" } } : {} }
+          }));
+          const text = res.text ?? "";
+          if (!text.trim()) throw new AiError("\u0631\u062C\u0639 \u0627\u0644\u0645\u0648\u062F\u064A\u0644 \u0628\u0631\u062F \u0641\u0627\u0636\u064A.", "provider");
+          return { text, model };
+        } catch (e2) {
+          lastErr = e2;
+          const msg2 = String(e2?.message || e2);
+          const status = e2?.status ?? e2?.code;
+          if (useThinking && /thinking/i.test(msg2)) {
+            useThinking = false;
+            attempt--;
+            continue;
+          }
+          if (/API key|API_KEY|PERMISSION_DENIED|401|403/i.test(msg2)) break outer;
+          if ((status === 503 || /UNAVAILABLE|overloaded/i.test(msg2)) && attempt === 0) {
+            await sleep2(2500);
+            continue;
+          }
+          console.warn(`[ai] model ${model} failed: ${msg2.slice(0, 160)}`);
+          break;
         }
-        const retryable = status === 429 || status === 503 || /RESOURCE_EXHAUSTED|UNAVAILABLE|overloaded/i.test(msg2);
-        if (!retryable || attempt === 2) break;
-        await sleep2(2500 * (attempt + 1));
       }
     }
     const msg = String(lastErr?.message || lastErr);
