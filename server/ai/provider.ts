@@ -52,7 +52,7 @@ const geminiProvider: AiProvider = {
         const res = await limiter.run(() => ai.models.generateContent({
           model: config.geminiModel,
           contents: [{ role: 'user', parts }],
-          config: { systemInstruction: req.system, responseMimeType: 'application/json', temperature: 0.8 },
+          config: { systemInstruction: req.system, responseMimeType: 'application/json', temperature: 0.8, httpOptions: { timeout: Number(process.env.AI_TIMEOUT_MS) || 100_000 } },
         }));
         const text = res.text ?? '';
         if (!text.trim()) throw new AiError('رجع الموديل برد فاضي.', 'provider');
@@ -68,6 +68,7 @@ const geminiProvider: AiProvider = {
     }
     const msg = String(lastErr?.message || lastErr);
     if (lastErr instanceof AiError) throw lastErr;
+    if (/timeout|timed out|abort|DEADLINE/i.test(msg)) throw new AiError('الموديل اتأخر في الرد. جرّب تاني، ولم يُخصم أي كريديت.', 'provider');
     if (/429|RESOURCE_EXHAUSTED|quota/i.test(msg)) throw new AiError('وصلنا للحد المجاني لواجهة Gemini حاليًا. حاول بعد دقيقة، ولم يُخصم أي كريديت.', 'rate_limited');
     if (/API key|API_KEY|PERMISSION_DENIED|401|403/i.test(msg)) throw new AiError('مفتاح Gemini غير صالح أو غير مصرّح له. راجع الإعدادات.', 'not_configured');
     throw new AiError(`فشل الاتصال بالموديل: ${msg.slice(0, 200)}`, 'provider');

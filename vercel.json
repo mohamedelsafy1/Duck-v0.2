@@ -2,7 +2,7 @@
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "functions": {
-    "api/index.js": { "maxDuration": 60, "includeFiles": "server/prompts/defaults/**" }
+    "api/index.js": { "maxDuration": 300, "includeFiles": "server/prompts/defaults/**" }
   },
   "rewrites": [
     { "source": "/api/(.*)", "destination": "/api/index.js" },

@@ -75275,7 +75275,7 @@ var geminiProvider = {
         const res = await limiter.run(() => ai.models.generateContent({
           model: config.geminiModel,
           contents: [{ role: "user", parts }],
-          config: { systemInstruction: req.system, responseMimeType: "application/json", temperature: 0.8 }
+          config: { systemInstruction: req.system, responseMimeType: "application/json", temperature: 0.8, httpOptions: { timeout: Number(process.env.AI_TIMEOUT_MS) || 1e5 } }
         }));
         const text = res.text ?? "";
         if (!text.trim()) throw new AiError("\u0631\u062C\u0639 \u0627\u0644\u0645\u0648\u062F\u064A\u0644 \u0628\u0631\u062F \u0641\u0627\u0636\u064A.", "provider");
@@ -75291,6 +75291,7 @@ var geminiProvider = {
     }
     const msg = String(lastErr?.message || lastErr);
     if (lastErr instanceof AiError) throw lastErr;
+    if (/timeout|timed out|abort|DEADLINE/i.test(msg)) throw new AiError("\u0627\u0644\u0645\u0648\u062F\u064A\u0644 \u0627\u062A\u0623\u062E\u0631 \u0641\u064A \u0627\u0644\u0631\u062F. \u062C\u0631\u0651\u0628 \u062A\u0627\u0646\u064A\u060C \u0648\u0644\u0645 \u064A\u064F\u062E\u0635\u0645 \u0623\u064A \u0643\u0631\u064A\u062F\u064A\u062A.", "provider");
     if (/429|RESOURCE_EXHAUSTED|quota/i.test(msg)) throw new AiError("\u0648\u0635\u0644\u0646\u0627 \u0644\u0644\u062D\u062F \u0627\u0644\u0645\u062C\u0627\u0646\u064A \u0644\u0648\u0627\u062C\u0647\u0629 Gemini \u062D\u0627\u0644\u064A\u064B\u0627. \u062D\u0627\u0648\u0644 \u0628\u0639\u062F \u062F\u0642\u064A\u0642\u0629\u060C \u0648\u0644\u0645 \u064A\u064F\u062E\u0635\u0645 \u0623\u064A \u0643\u0631\u064A\u062F\u064A\u062A.", "rate_limited");
     if (/API key|API_KEY|PERMISSION_DENIED|401|403/i.test(msg)) throw new AiError("\u0645\u0641\u062A\u0627\u062D Gemini \u063A\u064A\u0631 \u0635\u0627\u0644\u062D \u0623\u0648 \u063A\u064A\u0631 \u0645\u0635\u0631\u0651\u062D \u0644\u0647. \u0631\u0627\u062C\u0639 \u0627\u0644\u0625\u0639\u062F\u0627\u062F\u0627\u062A.", "not_configured");
     throw new AiError(`\u0641\u0634\u0644 \u0627\u0644\u0627\u062A\u0635\u0627\u0644 \u0628\u0627\u0644\u0645\u0648\u062F\u064A\u0644: ${msg.slice(0, 200)}`, "provider");
