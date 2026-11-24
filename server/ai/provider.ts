@@ -47,12 +47,13 @@ const geminiProvider: AiProvider = {
     const parts: any[] = [{ text: req.user }];
     if (req.audio) parts.push({ inlineData: { mimeType: req.audio.mimeType, data: req.audio.dataBase64 } });
     let lastErr: any;
+    let useThinking = (process.env.GEMINI_THINKING_LEVEL ?? 'low') !== 'off';
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
         const res = await limiter.run(() => ai.models.generateContent({
           model: config.geminiModel,
           contents: [{ role: 'user', parts }],
-          config: { systemInstruction: req.system, responseMimeType: 'application/json', temperature: 0.8, httpOptions: { timeout: Number(process.env.AI_TIMEOUT_MS) || 100_000 } },
+          config: { systemInstruction: req.system, responseMimeType: 'application/json', temperature: 0.8, httpOptions: { timeout: Number(process.env.AI_TIMEOUT_MS) || 100_000 }, ...(useThinking ? { thinkingConfig: { thinkingLevel: (process.env.GEMINI_THINKING_LEVEL ?? 'low') as any } } : {}) },
         }));
         const text = res.text ?? '';
         if (!text.trim()) throw new AiError('رجع الموديل برد فاضي.', 'provider');
@@ -61,6 +62,7 @@ const geminiProvider: AiProvider = {
         lastErr = e;
         const msg = String(e?.message || e);
         const status = e?.status ?? e?.code;
+        if (useThinking && /thinking/i.test(msg)) { useThinking = false; attempt--; continue; }
         const retryable = status === 429 || status === 503 || /RESOURCE_EXHAUSTED|UNAVAILABLE|overloaded/i.test(msg);
         if (!retryable || attempt === 2) break;
         await sleep(2500 * (attempt + 1));
