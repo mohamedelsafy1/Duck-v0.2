@@ -75494,9 +75494,12 @@ async function runStage(db, opts) {
     throw new HttpError(503, e2.message);
   }
   const prompt = await getActivePrompt(db, stage);
+  const LANGUAGE_RULE = stage === "form_from_voice" ? "" : `
+
+LANGUAGE RULE (mandatory, overrides everything above): keep the JSON keys exactly as in the contract (English), but write EVERY string value in Arabic (Arabic script), including titles, summaries, ideas, captions and scripts. Use clear Modern Standard Arabic for strategy and analysis; for ideas and ready-to-publish content use the dialect requested in the brand profile (Egyptian market \u2192 simple Egyptian colloquial, Gulf \u2192 white Gulf dialect, otherwise Modern Standard Arabic). Write in English ONLY if the brand profile explicitly asks for English. Brand names, product names and hashtags may stay in their original script.`;
   const system = `${prompt.content}
 
-${OUTPUT_CONTRACT[stage]}`;
+${OUTPUT_CONTRACT[stage]}${LANGUAGE_RULE}`;
   const started = Date.now();
   let raw = "";
   const logRun = async (status, error, charged) => {

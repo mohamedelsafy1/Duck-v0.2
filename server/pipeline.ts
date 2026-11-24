@@ -46,7 +46,9 @@ export async function runStage<T>(db: Db, opts: {
     throw new HttpError(503, e.message);
   }
   const prompt = await getActivePrompt(db, stage);
-  const system = `${prompt.content}\n\n${OUTPUT_CONTRACT[stage]}`;
+  // Code-level language rule: models like gpt-oss otherwise drift into English because the prompt files are written in English.
+  const LANGUAGE_RULE = stage === 'form_from_voice' ? '' : `\n\nLANGUAGE RULE (mandatory, overrides everything above): keep the JSON keys exactly as in the contract (English), but write EVERY string value in Arabic (Arabic script), including titles, summaries, ideas, captions and scripts. Use clear Modern Standard Arabic for strategy and analysis; for ideas and ready-to-publish content use the dialect requested in the brand profile (Egyptian market → simple Egyptian colloquial, Gulf → white Gulf dialect, otherwise Modern Standard Arabic). Write in English ONLY if the brand profile explicitly asks for English. Brand names, product names and hashtags may stay in their original script.`;
+  const system = `${prompt.content}\n\n${OUTPUT_CONTRACT[stage]}${LANGUAGE_RULE}`;
 
   const started = Date.now();
   let raw = '';
