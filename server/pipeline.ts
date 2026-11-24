@@ -70,7 +70,11 @@ export async function runStage<T>(db: Db, opts: {
       res = await provider.generate({ stage, system, user: `${opts.userMessage}\n\nYour previous answer was rejected (${why}). Return a corrected, complete JSON object that follows the output contract exactly.`, audio: opts.audio });
       raw = res.text;
       try { parsed = opts.schema.parse(extractJson(raw)); }
-      catch { throw new AiError('الموديل رجّع نتيجة غير مكتملة مرتين. لم يُخصم كريديت، حاول مرة أخرى.', 'invalid_output'); }
+      catch (e2: any) {
+        const why2 = e2 instanceof z.ZodError ? e2.issues.slice(0, 3).map((i) => `${i.path.join('.') || '(root)'}: ${i.message}`).join('; ') : 'JSON غير صالح أو مقطوع';
+        console.warn(`[ai] invalid output twice (${stage}): ${why2}; head=${raw.slice(0, 200).replace(/\s+/g, ' ')} tail=${raw.slice(-120).replace(/\s+/g, ' ')}`);
+        throw new AiError(`الموديل رجّع نتيجة غير مكتملة مرتين (${why2}). لم يُخصم كريديت، حاول مرة أخرى.`, 'invalid_output');
+      }
     }
 
     let creditsLeft: number | null = null;

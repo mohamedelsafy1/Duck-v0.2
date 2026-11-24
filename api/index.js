@@ -75439,8 +75439,10 @@ Your previous answer was rejected (${why}). Return a corrected, complete JSON ob
       raw = res.text;
       try {
         parsed = opts.schema.parse(extractJson(raw));
-      } catch {
-        throw new AiError("\u0627\u0644\u0645\u0648\u062F\u064A\u0644 \u0631\u062C\u0651\u0639 \u0646\u062A\u064A\u062C\u0629 \u063A\u064A\u0631 \u0645\u0643\u062A\u0645\u0644\u0629 \u0645\u0631\u062A\u064A\u0646. \u0644\u0645 \u064A\u064F\u062E\u0635\u0645 \u0643\u0631\u064A\u062F\u064A\u062A\u060C \u062D\u0627\u0648\u0644 \u0645\u0631\u0629 \u0623\u062E\u0631\u0649.", "invalid_output");
+      } catch (e2) {
+        const why2 = e2 instanceof external_exports.ZodError ? e2.issues.slice(0, 3).map((i2) => `${i2.path.join(".") || "(root)"}: ${i2.message}`).join("; ") : "JSON \u063A\u064A\u0631 \u0635\u0627\u0644\u062D \u0623\u0648 \u0645\u0642\u0637\u0648\u0639";
+        console.warn(`[ai] invalid output twice (${stage}): ${why2}; head=${raw.slice(0, 200).replace(/\s+/g, " ")} tail=${raw.slice(-120).replace(/\s+/g, " ")}`);
+        throw new AiError(`\u0627\u0644\u0645\u0648\u062F\u064A\u0644 \u0631\u062C\u0651\u0639 \u0646\u062A\u064A\u062C\u0629 \u063A\u064A\u0631 \u0645\u0643\u062A\u0645\u0644\u0629 \u0645\u0631\u062A\u064A\u0646 (${why2}). \u0644\u0645 \u064A\u064F\u062E\u0635\u0645 \u0643\u0631\u064A\u062F\u064A\u062A\u060C \u062D\u0627\u0648\u0644 \u0645\u0631\u0629 \u0623\u062E\u0631\u0649.`, "invalid_output");
       }
     }
     let creditsLeft = null;
