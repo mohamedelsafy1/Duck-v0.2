@@ -70623,7 +70623,7 @@ var config = {
   port: Number(process.env.PORT) || 3e3,
   databaseUrl: process.env.DATABASE_URL || "",
   geminiApiKey: process.env.GEMINI_API_KEY || "",
-  geminiModel: process.env.GEMINI_MODEL || "gemini-2.5-flash",
+  geminiModel: process.env.GEMINI_MODEL || "gemini-3.8-flash",
   // 'gemini' (default) or 'stub' (local UI testing only, refused in production)
   aiProvider: process.env.AI_PROVIDER || "gemini",
   publicUrl: process.env.PUBLIC_URL || "",
