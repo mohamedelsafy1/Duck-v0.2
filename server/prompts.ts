@@ -15,7 +15,11 @@ export const STAGE_LABELS: Record<Stage, string> = {
 };
 
 const dir = path.join(path.dirname(fileURLToPath(import.meta.url)), 'prompts', 'defaults');
-export const readDefault = (stage: Stage) => fs.readFileSync(path.join(dir, `${stage}.md`), 'utf8').trim();
+const altDir = path.join(process.cwd(), 'server', 'prompts', 'defaults'); // used when bundled (Vercel)
+export const readDefault = (stage: Stage) => {
+  const base = fs.existsSync(path.join(dir, `${stage}.md`)) ? dir : altDir;
+  return fs.readFileSync(path.join(base, `${stage}.md`), 'utf8').trim();
+};
 
 // The output contract is appended by code so that editing a prompt in the admin panel
 // can change behaviour but cannot silently break the JSON shape the app depends on.

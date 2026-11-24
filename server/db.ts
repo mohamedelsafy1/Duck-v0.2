@@ -159,7 +159,7 @@ export async function openDb(): Promise<Db> {
     const pool = new pg.default.Pool({
       connectionString: config.databaseUrl,
       ssl: needsSsl ? { rejectUnauthorized: false } : undefined,
-      max: 5,
+      max: process.env.VERCEL ? 2 : 5,
     });
     db = {
       kind: 'pg',
