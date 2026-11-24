@@ -28,15 +28,85 @@ const limiter = new Limiter(config.aiConcurrency);
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 export function getProvider(): AiProvider {
-  if (config.aiProvider === 'stub') {
+  const names = config.aiProvider.split(',').map((n) => n.trim().toLowerCase()).filter(Boolean);
+  if (names.includes('stub')) {
     if (config.isProd) throw new AiError('وضع AI_PROVIDER=stub غير مسموح في الإنتاج.', 'not_configured');
     return stubProvider;
   }
-  if (!config.geminiApiKey) {
-    throw new AiError('مفتاح GEMINI_API_KEY غير مضبوط على السيرفر. اطلب من الأدمن إضافته في إعدادات الاستضافة.', 'not_configured');
+  const list: AiProvider[] = [];
+  for (const n of names) {
+    if (n === 'gemini' && config.geminiApiKey) list.push(geminiProvider);
+    if (n === 'groq' && config.groqApiKey) list.push(groqProvider);
   }
-  return geminiProvider;
+  if (!list.length) {
+    throw new AiError('مفتاح الذكاء الاصطناعي غير مضبوط على السيرفر (GEMINI_API_KEY أو GROQ_API_KEY). اطلب من الأدمن إضافته في إعدادات الاستضافة.', 'not_configured');
+  }
+  return list.length === 1 ? list[0] : chainProvider(list);
 }
+
+// Tries each provider in order; the first one that answers wins.
+function chainProvider(list: AiProvider[]): AiProvider {
+  return {
+    name: list.map((p) => p.name).join('>'),
+    model: list.map((p) => p.model).join(' > '),
+    async generate(req) {
+      let last: any;
+      for (const p of list) {
+        try { return await p.generate(req); }
+        catch (e: any) { last = e; console.warn(`[ai] provider ${p.name} failed: ${String(e?.message || e).slice(0, 200)}`); }
+      }
+      throw last;
+    },
+  };
+}
+
+const groqProvider: AiProvider = {
+  name: 'groq',
+  model: config.groqModel,
+  async generate(req) {
+    const base = process.env.GROQ_BASE_URL || 'https://api.groq.com/openai/v1';
+    const headers = { Authorization: `Bearer ${config.groqApiKey}` };
+    const timeout = Number(process.env.AI_TIMEOUT_MS) || 85_000;
+    const fail = async (r: Response): Promise<never> => {
+      const body = (await r.text()).slice(0, 300);
+      if (r.status === 401 || r.status === 403) throw new AiError('مفتاح Groq غير صالح. راجع الإعدادات.', 'not_configured');
+      if (r.status === 429) throw new AiError('وصلنا للحد المجاني لـ Groq حاليًا. حاول بعد دقيقة، ولم يُخصم أي كريديت.', 'rate_limited');
+      throw new AiError(`فشل الاتصال بـ Groq (${r.status}): ${body}`, 'provider');
+    };
+    let user = req.user;
+    if (req.audio) {
+      const form = new FormData();
+      form.append('file', new Blob([Buffer.from(req.audio.dataBase64, 'base64')], { type: req.audio.mimeType }), req.audio.mimeType.includes('wav') ? 'voice.wav' : 'voice.webm');
+      form.append('model', config.groqSttModel);
+      form.append('response_format', 'json');
+      const tr = await limiter.run(() => fetch(`${base}/audio/transcriptions`, { method: 'POST', headers, body: form, signal: AbortSignal.timeout(timeout) }));
+      if (!tr.ok) await fail(tr);
+      const transcript = String((await tr.json() as any).text || '').trim();
+      if (!transcript) throw new AiError('ما قدرنا نفهم التسجيل الصوتي. جرّب تسجّل تاني بصوت أوضح.', 'provider');
+      user = `${req.user}\n\nالتسجيل الصوتي بعد تحويله لنص:\n${transcript}`;
+    }
+    const call = (withReasoning: boolean) => limiter.run(() => fetch(`${base}/chat/completions`, {
+      method: 'POST',
+      headers: { ...headers, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        model: config.groqModel,
+        messages: [{ role: 'system', content: req.system }, { role: 'user', content: user }],
+        response_format: { type: 'json_object' },
+        temperature: 0.7,
+        ...(withReasoning && /gpt-oss/.test(config.groqModel) ? { reasoning_effort: 'low' } : {}),
+      }),
+      signal: AbortSignal.timeout(timeout),
+    }));
+    let r: Response;
+    try { r = await call(true); } catch (e: any) { throw new AiError(/timeout|abort/i.test(String(e?.name || e)) ? 'الموديل اتأخر في الرد. جرّب تاني، ولم يُخصم أي كريديت.' : `فشل الاتصال بـ Groq: ${String(e?.message || e).slice(0, 150)}`, 'provider'); }
+    if (r.status === 400) r = await call(false);
+    if (!r.ok) await fail(r);
+    const data: any = await r.json();
+    const text = data?.choices?.[0]?.message?.content ?? '';
+    if (!String(text).trim()) throw new AiError('رجع الموديل برد فاضي.', 'provider');
+    return { text, model: config.groqModel };
+  },
+};
 
 const geminiProvider: AiProvider = {
   name: 'gemini',

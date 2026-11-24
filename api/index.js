@@ -70624,8 +70624,12 @@ var config = {
   databaseUrl: process.env.DATABASE_URL || "",
   geminiApiKey: process.env.GEMINI_API_KEY || "",
   geminiModel: process.env.GEMINI_MODEL || "gemini-3.8-flash,gemini-3-flash,gemini-2.5-flash-lite",
-  // 'gemini' (default) or 'stub' (local UI testing only, refused in production)
-  aiProvider: process.env.AI_PROVIDER || "gemini",
+  groqApiKey: process.env.GROQ_API_KEY || "",
+  groqModel: process.env.GROQ_MODEL || "openai/gpt-oss-120b",
+  groqSttModel: process.env.GROQ_STT_MODEL || "whisper-large-v3-turbo",
+  // Provider order, comma-separated: e.g. 'gemini,groq' (default: try Gemini, then Groq), 'groq', or 'stub' (local UI testing only,
+  // refused in production). Providers without a key are skipped.
+  aiProvider: process.env.AI_PROVIDER || "gemini,groq",
   publicUrl: process.env.PUBLIC_URL || "",
   // Beta guard rails (free API tier has strict limits)
   aiConcurrency: Number(process.env.AI_CONCURRENCY) || 2,
@@ -75252,15 +75256,93 @@ var Limiter = class {
 var limiter = new Limiter(config.aiConcurrency);
 var sleep2 = (ms) => new Promise((r2) => setTimeout(r2, ms));
 function getProvider() {
-  if (config.aiProvider === "stub") {
+  const names = config.aiProvider.split(",").map((n) => n.trim().toLowerCase()).filter(Boolean);
+  if (names.includes("stub")) {
     if (config.isProd) throw new AiError("\u0648\u0636\u0639 AI_PROVIDER=stub \u063A\u064A\u0631 \u0645\u0633\u0645\u0648\u062D \u0641\u064A \u0627\u0644\u0625\u0646\u062A\u0627\u062C.", "not_configured");
     return stubProvider;
   }
-  if (!config.geminiApiKey) {
-    throw new AiError("\u0645\u0641\u062A\u0627\u062D GEMINI_API_KEY \u063A\u064A\u0631 \u0645\u0636\u0628\u0648\u0637 \u0639\u0644\u0649 \u0627\u0644\u0633\u064A\u0631\u0641\u0631. \u0627\u0637\u0644\u0628 \u0645\u0646 \u0627\u0644\u0623\u062F\u0645\u0646 \u0625\u0636\u0627\u0641\u062A\u0647 \u0641\u064A \u0625\u0639\u062F\u0627\u062F\u0627\u062A \u0627\u0644\u0627\u0633\u062A\u0636\u0627\u0641\u0629.", "not_configured");
+  const list = [];
+  for (const n of names) {
+    if (n === "gemini" && config.geminiApiKey) list.push(geminiProvider);
+    if (n === "groq" && config.groqApiKey) list.push(groqProvider);
   }
-  return geminiProvider;
+  if (!list.length) {
+    throw new AiError("\u0645\u0641\u062A\u0627\u062D \u0627\u0644\u0630\u0643\u0627\u0621 \u0627\u0644\u0627\u0635\u0637\u0646\u0627\u0639\u064A \u063A\u064A\u0631 \u0645\u0636\u0628\u0648\u0637 \u0639\u0644\u0649 \u0627\u0644\u0633\u064A\u0631\u0641\u0631 (GEMINI_API_KEY \u0623\u0648 GROQ_API_KEY). \u0627\u0637\u0644\u0628 \u0645\u0646 \u0627\u0644\u0623\u062F\u0645\u0646 \u0625\u0636\u0627\u0641\u062A\u0647 \u0641\u064A \u0625\u0639\u062F\u0627\u062F\u0627\u062A \u0627\u0644\u0627\u0633\u062A\u0636\u0627\u0641\u0629.", "not_configured");
+  }
+  return list.length === 1 ? list[0] : chainProvider(list);
 }
+function chainProvider(list) {
+  return {
+    name: list.map((p) => p.name).join(">"),
+    model: list.map((p) => p.model).join(" > "),
+    async generate(req) {
+      let last;
+      for (const p of list) {
+        try {
+          return await p.generate(req);
+        } catch (e2) {
+          last = e2;
+          console.warn(`[ai] provider ${p.name} failed: ${String(e2?.message || e2).slice(0, 200)}`);
+        }
+      }
+      throw last;
+    }
+  };
+}
+var groqProvider = {
+  name: "groq",
+  model: config.groqModel,
+  async generate(req) {
+    const base = process.env.GROQ_BASE_URL || "https://api.groq.com/openai/v1";
+    const headers = { Authorization: `Bearer ${config.groqApiKey}` };
+    const timeout = Number(process.env.AI_TIMEOUT_MS) || 85e3;
+    const fail = async (r3) => {
+      const body = (await r3.text()).slice(0, 300);
+      if (r3.status === 401 || r3.status === 403) throw new AiError("\u0645\u0641\u062A\u0627\u062D Groq \u063A\u064A\u0631 \u0635\u0627\u0644\u062D. \u0631\u0627\u062C\u0639 \u0627\u0644\u0625\u0639\u062F\u0627\u062F\u0627\u062A.", "not_configured");
+      if (r3.status === 429) throw new AiError("\u0648\u0635\u0644\u0646\u0627 \u0644\u0644\u062D\u062F \u0627\u0644\u0645\u062C\u0627\u0646\u064A \u0644\u0640 Groq \u062D\u0627\u0644\u064A\u064B\u0627. \u062D\u0627\u0648\u0644 \u0628\u0639\u062F \u062F\u0642\u064A\u0642\u0629\u060C \u0648\u0644\u0645 \u064A\u064F\u062E\u0635\u0645 \u0623\u064A \u0643\u0631\u064A\u062F\u064A\u062A.", "rate_limited");
+      throw new AiError(`\u0641\u0634\u0644 \u0627\u0644\u0627\u062A\u0635\u0627\u0644 \u0628\u0640 Groq (${r3.status}): ${body}`, "provider");
+    };
+    let user = req.user;
+    if (req.audio) {
+      const form = new FormData();
+      form.append("file", new Blob([Buffer.from(req.audio.dataBase64, "base64")], { type: req.audio.mimeType }), req.audio.mimeType.includes("wav") ? "voice.wav" : "voice.webm");
+      form.append("model", config.groqSttModel);
+      form.append("response_format", "json");
+      const tr = await limiter.run(() => fetch(`${base}/audio/transcriptions`, { method: "POST", headers, body: form, signal: AbortSignal.timeout(timeout) }));
+      if (!tr.ok) await fail(tr);
+      const transcript = String((await tr.json()).text || "").trim();
+      if (!transcript) throw new AiError("\u0645\u0627 \u0642\u062F\u0631\u0646\u0627 \u0646\u0641\u0647\u0645 \u0627\u0644\u062A\u0633\u062C\u064A\u0644 \u0627\u0644\u0635\u0648\u062A\u064A. \u062C\u0631\u0651\u0628 \u062A\u0633\u062C\u0651\u0644 \u062A\u0627\u0646\u064A \u0628\u0635\u0648\u062A \u0623\u0648\u0636\u062D.", "provider");
+      user = `${req.user}
+
+\u0627\u0644\u062A\u0633\u062C\u064A\u0644 \u0627\u0644\u0635\u0648\u062A\u064A \u0628\u0639\u062F \u062A\u062D\u0648\u064A\u0644\u0647 \u0644\u0646\u0635:
+${transcript}`;
+    }
+    const call = (withReasoning) => limiter.run(() => fetch(`${base}/chat/completions`, {
+      method: "POST",
+      headers: { ...headers, "content-type": "application/json" },
+      body: JSON.stringify({
+        model: config.groqModel,
+        messages: [{ role: "system", content: req.system }, { role: "user", content: user }],
+        response_format: { type: "json_object" },
+        temperature: 0.7,
+        ...withReasoning && /gpt-oss/.test(config.groqModel) ? { reasoning_effort: "low" } : {}
+      }),
+      signal: AbortSignal.timeout(timeout)
+    }));
+    let r2;
+    try {
+      r2 = await call(true);
+    } catch (e2) {
+      throw new AiError(/timeout|abort/i.test(String(e2?.name || e2)) ? "\u0627\u0644\u0645\u0648\u062F\u064A\u0644 \u0627\u062A\u0623\u062E\u0631 \u0641\u064A \u0627\u0644\u0631\u062F. \u062C\u0631\u0651\u0628 \u062A\u0627\u0646\u064A\u060C \u0648\u0644\u0645 \u064A\u064F\u062E\u0635\u0645 \u0623\u064A \u0643\u0631\u064A\u062F\u064A\u062A." : `\u0641\u0634\u0644 \u0627\u0644\u0627\u062A\u0635\u0627\u0644 \u0628\u0640 Groq: ${String(e2?.message || e2).slice(0, 150)}`, "provider");
+    }
+    if (r2.status === 400) r2 = await call(false);
+    if (!r2.ok) await fail(r2);
+    const data = await r2.json();
+    const text = data?.choices?.[0]?.message?.content ?? "";
+    if (!String(text).trim()) throw new AiError("\u0631\u062C\u0639 \u0627\u0644\u0645\u0648\u062F\u064A\u0644 \u0628\u0631\u062F \u0641\u0627\u0636\u064A.", "provider");
+    return { text, model: config.groqModel };
+  }
+};
 var geminiProvider = {
   name: "gemini",
   model: config.geminiModel,

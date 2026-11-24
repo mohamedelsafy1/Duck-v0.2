@@ -20,8 +20,12 @@ export const config = {
   databaseUrl: process.env.DATABASE_URL || '',
   geminiApiKey: process.env.GEMINI_API_KEY || '',
   geminiModel: process.env.GEMINI_MODEL || 'gemini-3.8-flash,gemini-3-flash,gemini-2.5-flash-lite',
-  // 'gemini' (default) or 'stub' (local UI testing only, refused in production)
-  aiProvider: process.env.AI_PROVIDER || 'gemini',
+  groqApiKey: process.env.GROQ_API_KEY || '',
+  groqModel: process.env.GROQ_MODEL || 'openai/gpt-oss-120b',
+  groqSttModel: process.env.GROQ_STT_MODEL || 'whisper-large-v3-turbo',
+  // Provider order, comma-separated: e.g. 'gemini,groq' (default: try Gemini, then Groq), 'groq', or 'stub' (local UI testing only,
+  // refused in production). Providers without a key are skipped.
+  aiProvider: process.env.AI_PROVIDER || 'gemini,groq',
   publicUrl: process.env.PUBLIC_URL || '',
   // Beta guard rails (free API tier has strict limits)
   aiConcurrency: Number(process.env.AI_CONCURRENCY) || 2,

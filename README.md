@@ -14,7 +14,8 @@ npm run dev                  # الواجهة على :5173 والسيرفر عل
 في الإنتاج كلمات المرور تؤخذ من `ADMIN_PASSWORD` و `DEMO_PASSWORD` (أو تُولَّد وتُطبع مرة واحدة في اللوج).
 
 ## النشر للتجربة (Render + Postgres مجاني)
-1. **مفتاح Gemini:** من https://aistudio.google.com/apikey (طبقة مجانية بحدود طلبات). اشتراك Google AI Pro لا يعطي حصة API عادةً، المفتاح منفصل.
+1. **مفتاح الذكاء الاصطناعي:** يعمل Gemini وGroq معًا (يجرّب بالترتيب في `AI_PROVIDER`، الافتراضي `gemini,groq`). مفتاح Groq مجاني من https://console.groq.com ويوضع في `GROQ_API_KEY`.
+   **مفتاح Gemini:** من https://aistudio.google.com/apikey (طبقة مجانية بحدود طلبات). اشتراك Google AI Pro لا يعطي حصة API عادةً، المفتاح منفصل.
 2. **قاعدة البيانات:** أنشئ مشروعًا مجانيًا في Neon أو Supabase وانسخ `DATABASE_URL`. بدونها ستُفقد البيانات عند كل إعادة نشر على Render المجاني.
 3. **Render:** New → Blueprint → اختر هذا الريبو (يقرأ `render.yaml`). أضف المتغيرين `GEMINI_API_KEY` و `DATABASE_URL`. كلمتا مرور الأدمن والتجربة تُولَّدان تلقائيًا وتجدهما في Environment.
 4. الموقع المجاني ينام بعد فترة خمول ويستيقظ ببطء.
